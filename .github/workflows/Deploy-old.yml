@@ -1,0 +1,106 @@
+name: Deploy-old
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 12 * * *' # every day at 3:30 pm IST
+
+
+permissions: write-all
+  
+env:
+
+  # EDIT DEFAULT_COMMAND AND DEFAULT_RETRY_COMMAND IF YOU WANT
+  DEFAULT_COMMAND: timeout 3000 python ms_rewards_farmer.py --headless --repeat-shopping --dont-check-for-updates --superfast --skip-unusual --shuffle --no-images --discord ${{ secrets.webhook }} --on-finish exit
+  DEFAULT_RETRY_COMMAND: timeout 3000 python ms_rewards_farmer.py --headless --repeat-shopping --dont-check-for-updates --superfast --shuffle --skip-unusual --no-images --discord ${{ secrets.webhook }} --on-finish exit
+  
+  CUSTOM_COMMAND: ${{ secrets.CUSTOM_COMMAND }}
+  CUSTOM_RETRY_COMMAND: ${{ secrets.CUSTOM_RETRY_COMMAND }}
+  GITHUB_TOKEN: ${{ github.token }}
+  ACCOUNT: ${{ secrets.ACCOUNTS }}
+
+jobs:
+  Run:
+
+    runs-on: ubuntu-latest
+#    timeout-minutes: 90 # HASTAG THIS LINE IF YOU DON'T WANT TO LIMIT THE WORKFLOWS RUN TIME
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v3
+      
+      
+    - name: Install OpenVPN
+      run: |
+        sudo apt update
+        sudo apt install -y openvpn openvpn-systemd-resolved
+    - name: Connect to VPN
+      uses: "kota65535/github-openvpn-connect-action@v2"
+      with:
+        config_file: config.ovpn
+        username: ${{ secrets.OVPN_USERNAME }}
+        password: ${{ secrets.OVPN_PASSWORD }}
+
+# SET REPO STUFF STEP  
+
+    - name: Clone the repository into Sub-folder named 'TestProject' and move it back to main directory
+      run: |
+        git clone https://github.com/JittoJoseph/TestProject
+        mv TestProject/* .
+
+# CHECK DIR FOR TEST
+    - name: check dir
+      run: ls -a
+  
+# INSTALL REQUIRED STUFF TO RUN BOT
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+        cache: 'pip'
+      
+    - name: Install required packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb
+        pip install -r requirements.txt
+        
+    - name: Set secrets variable as environment variable
+      run: echo "$ACCOUNT" > accounts.json
+
+        
+# RUN THE BOT WITH SECRET COMMAND
+    - name: Run the Bot with env.CUSTOM_COMMAND
+      if: ${{ env.CUSTOM_COMMAND }}
+      run: ${{ env.CUSTOM_COMMAND }}
+
+    - name: Retry the Bot with env.CUSTOM_RETRY_COMMAND
+      if: ${{ failure() && env.CUSTOM_COMMAND }}
+      run: ${{ env.DEFAULT_RETRY_COMMAND }}
+
+# RUN THE BOT WITH DEFAULT COMMAND
+    - name: Run the Bot with env.DEFAULT_COMMAND
+      if: ${{ env.CUSTOM_COMMAND == '' }}
+      run: ${{ env.DEFAULT_COMMAND }}
+
+    - name: Retry the Bot with env.DEFAULT_RETRY_COMMAND
+      if: ${{ failure() && env.CUSTOM_COMMAND == '' }}
+      run: ${{ env.DEFAULT_RETRY_COMMAND }}
+      
+    - name: Run the Bot again
+      if: ${{ env.CUSTOM_COMMAND == '' }}
+      run: ${{ env.DEFAULT_COMMAND }}
+
+# CHECK LOG_ACCOUNTS.TXT     
+    - name: Check log after run
+      run: cat Logs_accounts.txt
+
+# DELETE WORKFLOWS WHICH ARE OLDER THAN ... SEC
+  Delete_old_workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old workflow runs
+        uses: MajorScruffy/delete-old-workflow-runs@v0.3.0
+        with:
+          repository: ${{ github.repository }}
+          older-than-seconds: 77760 # CHANGE THIS VALUE AS YOU NEED
